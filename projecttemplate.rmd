@@ -1,0 +1,416 @@
+---
+title: "Prosper Loan Data Exploratory Data Analysis"
+output: github_document
+---
+
+```{r setup, echo= FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(include = TRUE)
+knitr::opts_chunk$set(message =  FALSE)
+knitr::opts_chunk$set(warning =  FALSE)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, packages}
+library(ggplot2)
+library(dplyr)
+library(reshape2)
+library(maps)
+library(RColorBrewer)
+library(GGally)
+library(scales)
+library(memisc)
+library(data.table)
+```
+
+```{r echo=FALSE, Load_the_Data}
+# Load the Data
+dt <- read.csv("/Users/nonusingh/prosperLoanData.csv", header = TRUE)
+```
+
+> Prosper is a **marketplace lending platform**, with over $8 billion in funded loans. Prosper allows people to invest in each other in a way that is financially and socially rewarding. On Prosper, borrowers list loan requests between $2,000 and $35,000 and individual investors invest
+as little as $25 in each loan listing they select. Prosper handles the servicing of the loan on behalf of the matched borrowers and investors.
+In the next few sections, we will clean up the data and do exploratory data analysis on the loan data using univariate, bivariate and multivariate graphs and summaries. Analysis section highlights the interesting reflections from the plots section. In Final Plots and Summary section, we will identify top three charts and provide final reflections regarding the dataset.
+
+## Data Wrangling
+> The dataset that we are investigating has data from loans borrowed from 2005 to 2014. There are variables that are related to loan history, credit history, occupation, income range etc. of the borrower. Few of the columns in the dataset are printed below:
+
+```{r}
+paste("This data table stored as 'dt' has", dim(dt)[1], "rows and", dim(dt)[2], "columns")
+head(colnames(dt),20)
+```
+
+> Next, since we have 81 variables, and some of the cells might have missing data, I will drop the columns that have more than 80% NA's.
+
+```{r echo=TRUE}
+dt <- dt[,colSums(is.na(dt)) < nrow(dt)*0.80]
+```
+
+> Some of the variable names are longer and we will shorten them next. I will only update the ones that will be used for the analysis and leave the others as is.
+
+```{r echo=TRUE}
+setnames(dt, old = c('ProsperRating..Alpha.','ListingCategory..numeric.'), 
+         new = c('ProsperRating','ListingCategory'))
+```
+
+> Now that the data is cleaner, let us start plotting.
+
+## Univariate Plots Section
+
+> In this section, we will be using summary tables and univariate plots to draw conclusions based on our data.
+
+**Characteristics of Loan:**
+
+```{r}
+ggplot(dt, aes(LoanOriginalAmount)) + 
+  geom_histogram(fill='#05DBF2', color='black', binwidth = 1000) +
+  labs(title="Distribution of Borrowed Amount") + 
+  scale_x_continuous(breaks = seq(0,35000,5000))
+```
+
+```{r}
+summary(dt$LoanOriginalAmount)
+```
+
+> The Borrowed Amount ranges from $1000 to $35000. Most loans borrowed were of amount $4000, with median at $6500 and mean of $8337.
+
+```{r, Univariate_Plots}
+ggplot(dt, aes(BorrowerRate)) + 
+  geom_histogram(fill='#05DBF2', color='black') +
+  labs(title="Distribution of Borrower Rate")
+```
+
+```{r}
+summary(dt$BorrowerRate)
+```
+
+> The mean borrowing rate was **0.192** with median at 0.184 on loan amounts
+
+```{r}
+ggplot(dt, aes(LoanCurrentDaysDelinquent/30)) + 
+  geom_histogram(fill='#05DBF2', color='black', binwidth = 7) +
+  labs(title="Distribution of Delinquent Months") +
+  scale_y_sqrt()
+```
+
+```{r}
+summary(dt$LoanCurrentDaysDelinquent)
+```
+
+> Most users were good on payments with **zero** median delinquent days. However, 9 borrowers have over **7 years** of delinquency (2555 days).
+
+```{r echo=TRUE}
+table(dt$Term)
+```
+
+> There were three loan terms as per the data provided- Typical loan terms were **36 months** (87778 loans). Second most popular was 60 months or 5 year term (24545 loans) and the least popular was 12 month term (1614 loans). 
+
+**Characteristics of Borrower:**
+
+> Next, let us investigate the characteristics of the borrowers in our dataset using summary tables and barplots. The first variable we will be looking into is credit score. We are provided two columns- CreditScoreRangeLower and CreditScoreRangeUpper, following is the plot for Upper range of the Credit scores
+
+```{r}
+ggplot(dt, aes(x = CreditScoreRangeUpper)) + 
+  geom_histogram(aes(y = ..count..), binwidth = 10, fill='#05DBF2',
+        color='black', position="identity") + scale_y_sqrt() +
+        labs(title="Distribution of CreditScoreRangeUpper")
+```
+
+```{r echo=TRUE}
+summary(dt$CreditScoreRangeLower)
+summary(dt$CreditScoreRangeUpper)
+```
+
+> Median Credit score range of a borrower is **680.0 to 699.0** and Mean ranges from 685.6 to 704.6. The **max score is 880 to 899** and there are a few borrowers (133 to be exact) with very low credit score (0-19).
+
+```{r}
+ggplot(subset(dt, !(IncomeRange %in% c("Not displayed" , "Not available"))), 
+       aes(x = EmploymentStatus, fill = IncomeRange)) +
+  geom_bar() + coord_flip() +
+  labs(title="Distribution of Employment Status and Income Range")
+```
+
+```{r}
+summary(dt$IncomeRange)
+```
+
+> Most Borrowers are **employed** (count = 67322), 26355 have full time jobs, and 6134 are self employed. Their income ranges mostly from **$25,000 to $49,999 per annum**, 17337 borrowers earning over $100,000 and over 1600 unemployed/retired/$0 income borrowers. However, there are 8669 borrowers with their **non verifiable income**. Ignoring these, the top 3 borrowers are still in income range: $25,000-$49,999 followed by $50,000-$74,999 and $100,000+.
+
+```{r}
+occ_sub <- dt %>%
+  group_by(Occupation) %>%
+  summarise(Count = n()) %>%
+  arrange(., desc(Count))
+top_occupation <- occ_sub[1:7,]
+ggplot(top_occupation,aes(x = reorder(Occupation, Count), y = Count)) +
+  geom_bar(stat="identity", fill='#05DBF2', color='black') + coord_flip() +
+  labs(title="Top Occupations of the Borrower")
+```
+
+> The **top 7 Categories for Occupation** are 'Other', 'Professional', 'Computer Programmer', 'Executive', 'Teacher', 'Administrative Assistant' and 'Analyst'.
+
+**What Determines Borrower Rate?**
+
+```{r}
+library(gridExtra)
+g1 = ggplot(subset(dt, (!dt$ProsperRating== "")),
+            aes(x = BorrowerRate, fill = ProsperRating)) + geom_histogram()
+g2 = ggplot(subset(dt,!(IncomeRange %in% c("Not displayed" , "Not available"))),
+            aes(x = BorrowerRate, fill = IncomeRange)) + geom_histogram()
+g3 = ggplot(subset(dt,!(EmploymentStatus %in% c("" , "Not available"))),
+            aes(x = BorrowerRate, fill = EmploymentStatus)) + geom_histogram()
+g4 = ggplot(dt,aes(x = BorrowerRate, fill = IsBorrowerHomeowner)) +
+  geom_histogram() + scale_fill_discrete(name="Homeowner")
+grid.arrange(g1,g2,g3,g4)
+```
+
+> From the above plots,  
++ Borrower Rate histogram shows very nice stirations when colored by Prosper Rating. The borrower rate increases with decreasing prosper rating, we see two peaks for counts- first one around 0.15 (A and B rating borrowers) and second one around 0.3 (E and HR rating borrowers).  
++ When colored by Income range, the plot looks pretty uniform and doesn't show much correlation. However, the Unemployed borrowers mostly borrowed at rate = 0.3.  
++ The third plot shows most of the borrowers were employed.  
++ Also, owning a home did not increase or decrease the borrowing rate for the given dataset  
+
+**Where was the loan borrowed?**
+
+```{r}
+state_sub <- dt %>% 
+  group_by(BorrowerState) %>% 
+  summarise(Count_state = n()) %>% 
+  arrange(., desc(Count_state))
+top_state <- state_sub[1:5,]
+top_state_dt <- dplyr::semi_join(dt,top_state , by = "BorrowerState")
+ggplot(top_state_dt,aes(x = LoanOriginalAmount, fill = BorrowerState)) + 
+  geom_histogram(binwidth = 1000) + scale_y_sqrt() + 
+  labs(title="Distribution of Borrowed Amount by Location(State)")
+```
+
+> Since displaying meaningful data from all 50 states is difficult, we picked only **Top 5 states** which had the most number of loans. The distribution is uniform across the top 5 states. Note the peaks at 10K, 15K, 20K etc. Still wondering why the mode is $4K which is not a multiple of 5K. Let us investigate this anomaly in next section.
+
+**What was the loan borrowed for?**
+
+> Following Listing Categories were provided in the dataset as the purpose of the loan-
+0 - Not Available, 1 - Debt Consolidation, 2 - Home Improvement, 3 - Business, 4 - Personal Loan, 5 - Student Use, 6 - Auto, 7- Other, 8 - Baby&Adoption, 9 - Boat, 10 - Cosmetic Procedure, 11 - Engagement Ring, 12 - Green Loans, 13 - Household Expenses, 14 - Large Purchases, 15 - Medical/Dental, 16 - Motorcycle, 17 - RV, 18 - Taxes, 19 - Vacation, 20 - Wedding Loans
+
+> Let us explore **top 10** reasons for borrowing the loan
+
+```{r}
+listing_cat <- dt %>% 
+  group_by(ListingCategory) %>% 
+  summarise(number_cat = n()) %>% 
+  arrange(., desc(number_cat))
+top_list <- listing_cat[1:10,]
+ggplot(top_list,aes(x = reorder(ListingCategory, number_cat), y = number_cat)) +
+  geom_bar(stat="identity", fill='#05DBF2', color='black') + coord_flip() +
+  labs(title="Top Reasons for Borrowing")
+```
+
+> Top reason for borrowing was debt consolidation. Other reasons were home improvement, business and auto in that order
+
+## Univariate Analysis
+> Based on the above charts, some of the questions that can be answered are as follows:
+
+#### What is the structure of your dataset?
+> The dataset had 113937 rows and 81 columns, some of the columns with more than 80% missing values were dropped to resulting in 73 columns
+
+#### What is/are the main feature(s) of interest in your dataset?
+> So far, prosper rating and borrower rates seem to be intersting.
+
+#### What other features in the dataset do you think will help support your investigation into your feature(s) of interest?
+> Investors, and time as a factor will help understand the different relationships in the data better
+
+#### Did you create any new variables from existing variables in the dataset?
+> Some placeholder variables for dplyr function were created. for histograms, we haven't created additional features by combining variables
+
+#### Of the features you investigated, were there any unusual distributions? Did you perform any operations on the data to tidy, adjust, or change the form of the data? If so, why did you do this?
+> There are a few unusual features in this dataset like there borrowers who entered $0 as their income. Also some borrowers had very low credit score(<20) which did not make sense. Other than that, there were missing values. So plots were made with subsets of data to ignore those values. Also transformed the axis for few of the charts above. Outliers in the dataset although identified, haven't been removed yet. We will eliminate them in our bivariate analysis.
+
+## Bivariate Plots Section
+
+```{r}
+
+
+```
+
+
+**The 4K Mystery**
+
+```{r echo=FALSE, Bivariate_Plots}
+ggplot(subset(dt, !(dt$ProsperRating == "")),
+       aes(ProsperRating, LoanOriginalAmount)) +
+  geom_boxplot(aes(fill = ProsperRating)) + 
+  labs(title = "Borrowed Amount by Prosper Rating")
+```
+
+> Based on this boxplot, Lower loan amounts were borrowed by HR (High Risk), E, D rating borrowers and higher amounts were borrowed by borrowers with high prosper rating. Looks like most of the 4K loans were borrowed by E and HR rated borrowers. Tight distribution of E and HR also tells me that due to their rating, they are unable to borrow higher loan amounts
+
+**Borrower Rate by Prosper Rating**
+
+```{r}
+dt_pr <- subset(dt, !(dt$ProsperRating == ""))
+dt_pr$ProsperRatings <- factor(dt_pr$ProsperRating, 
+                               c("AA", "A", "B", "C", "D", "E", "HR"))
+
+ggplot(dt_pr, aes(y = BorrowerRate,x=ProsperRatings)) +
+  geom_boxplot(aes(fill = ProsperRatings)) + 
+  stat_summary(fun.y=median, geom="line", aes(group=1)) +
+  labs(title = "Borrower Rate by Prosper Rating")
+```
+
+> The Borrower Rate shows linear relationship to Prosper Rating, Borrower Rate decreases with improving Rating.
+
+**What should an invester invest in?**
+
+> Let us explore another variable: Lender Yield and determine its relationship to Prosper Rating.
+
+```{r}
+ggplot(dt_pr, aes(y = LenderYield,x=ProsperRatings)) +
+  geom_boxplot(aes(fill = ProsperRatings)) + 
+  stat_summary(fun.y=median, geom="line", aes(group=1)) +
+  labs(title = "Lender Yield by Prosper Rating")
+```
+
+> There is practically no visual difference in the plots for Lender Yield and Borrower Rate. Lender Yield also shows linear relationship to Prosper Rating
+
+**Talking about Linear Relationships!**
+
+```{r}
+fit <- lm(LenderYield ~ BorrowerRate, data = dt)
+equation = function(x) {
+  lm_coef <- list(a = round(coef(x)[1], digits = 2),
+                  b = round(coef(x)[2], digits = 2),
+                  r2 = round(summary(x)$r.squared, digits = 3));
+  lm_eq <- substitute(italic(y) == a + b %.% italic(x)*","~~italic(R)^2~"="~r2,lm_coef)
+  as.character(as.expression(lm_eq));                 
+}
+ggplot(dt, aes(y = LenderYield, x = BorrowerRate)) +
+   geom_smooth(method = lm, se = FALSE) + 
+  geom_point(shape = 1, color = 'orange', 
+             alpha = 1/4, position=position_jitter()) +
+  labs(title = " Lender Yield vs. Borrower Rate") +
+    annotate("rect", xmin = 0.00, xmax = 0.19, ymin = 0.3, 
+               ymax = 0.344, fill="white", colour="red") +
+    annotate("text", x = 0.095, y = 0.32, label = equation(fit), parse = TRUE)
+
+```
+
+> Lender Yield is strongly correlated to Borrower Rate with $r^{2}$ = 0.9984, As the borrower rate increases, the LenderYield also increases but high borrower rate comes with higher risk as well as most of the borrowers with high rate have low credit ratings. That is represented very well in the plot below.
+
+```{r}
+ggplot(dt, aes(y = EstimatedEffectiveYield, x = BorrowerRate, 
+               color = ProsperRating)) + 
+  geom_point() + labs(title = " Estimated Effective Yield vs. Borrower Rate")
+```
+
+> At the same borrower rate(for eg, 0.2), estimated yield is in negative for HR and positive for B and A borrowers. It appears that the estimated yield is calculated purely based on rating and borrower rate
+
+```{r}
+g8 = ggplot(dt, aes(y = EstimatedLoss, x = LoanOriginalAmount, 
+               color = ProsperRating)) + geom_smooth() 
+g9 = ggplot(dt, aes(y = EstimatedLoss, x = BorrowerRate, 
+               color = ProsperRating)) + geom_smooth() 
+  grid.arrange(g8,g9)
+```
+
+> Estimated loss has a very weak relationship to Loan Amount for all except E and HR (notice flat lines). For E and HR, Loss decreases slighly over loan amount of $10,000, which makes sense as not may can't borrow that amount with those prosper ratings. With increasing Borrower Rate, Estimated loss also increases as high borrower rate means low prosper rating.
+
+```{r}
+ggplot(dt_pr, aes(y = DebtToIncomeRatio,x=IncomeRange)) +
+  geom_boxplot(aes(color = ProsperRatings)) + 
+  stat_summary(fun.y=median, geom="line", aes(group=1)) +
+  labs(title = "Lender Yield by Prosper Rating")
+```
+
+##TSA, debt to income, date, monthly payment-original amt
+
+
+## Bivariate Analysis
+
+> **Tip**: As before, summarize what you found in your bivariate explorations
+here. Use the questions below to guide your discussion.
+
+### Talk about some of the relationships you observed in this part of the \
+investigation. How did the feature(s) of interest vary with other features in \
+the dataset?
+
+### Did you observe any interesting relationships between the other features \
+(not the main feature(s) of interest)?
+
+### What was the strongest relationship you found?
+
+
+## Multivariate Plots Section
+
+> **Tip**: Now it's time to put everything together. Based on what you found in
+the bivariate plots section, create a few multivariate plots to investigate
+more complex interactions between variables. Make sure that the plots that you
+create here are justified by the plots you explored in the previous section. If
+you plan on creating any mathematical models, this is the section where you
+will do that.
+
+```{r echo=FALSE, Multivariate_Plots}
+
+```
+
+## Multivariate Analysis
+
+### Talk about some of the relationships you observed in this part of the \
+investigation. Were there features that strengthened each other in terms of \
+looking at your feature(s) of interest?
+
+### Were there any interesting or surprising interactions between features?
+
+### OPTIONAL: Did you create any models with your dataset? Discuss the \
+strengths and limitations of your model.
+
+------
+
+## Final Plots and Summary
+
+> **Tip**: You've done a lot of exploration and have built up an understanding
+of the structure of and relationships between the variables in your dataset.
+Here, you will select three plots from all of your previous exploration to
+present here as a summary of some of your most interesting findings. Make sure
+that you have refined your selected plots for good titling, axis labels (with
+units), and good aesthetic choices (e.g. color, transparency). After each plot,
+make sure you justify why you chose each plot by describing what it shows.
+
+### Plot One
+```{r echo=FALSE, Plot_One}
+
+```
+
+### Description One
+
+
+### Plot Two
+```{r echo=FALSE, Plot_Two}
+
+```
+
+### Description Two
+
+
+### Plot Three
+```{r echo=FALSE, Plot_Three}
+
+```
+
+### Description Three
+
+------
+
+## Reflection
+
+> **Tip**: Here's the final step! Reflect on the exploration you performed and
+the insights you found. What were some of the struggles that you went through?
+What went well? What was surprising? Make sure you include an insight into
+future work that could be done with the dataset.
+
+> **Tip**: Don't forget to remove this, and the other **Tip** sections before
+saving your final work and knitting the final report!
+
+
+References:
+
+
+http://t-redactyl.io/blog/2016/05/creating-plots-in-r-using-ggplot2-part-11-linear-regression-plots.html
+https://www.rstudio.com/wp-content/uploads/2015/02/rmarkdown-cheatsheet.pdf
