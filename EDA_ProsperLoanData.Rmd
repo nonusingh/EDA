@@ -113,7 +113,8 @@ dt$LoanOriginationDate.month <- dt$LoanOriginationDate %>%
   format('%b')
 dt$LoanOriginationDate.month <- factor(dt$LoanOriginationDate.month,
                                             months)
-ggplot(subset(dt,!(LoanOriginationDate.year %in% c("2005", "2014"))), aes(as.factor(LoanOriginationDate.year))) +
+ggplot(subset(dt,!(LoanOriginationDate.year %in% c("2005", "2014"))), 
+aes(as.factor(LoanOriginationDate.year))) +
   geom_bar(fill='#05DBF2', color='black') +
   labs(title = 'Number of Loans by Year') +
   xlab('Year') +
@@ -535,21 +536,14 @@ summary(model)
 
 ## Final Plots and Summary
 
-> **Tip**: You've done a lot of exploration and have built up an understanding
-of the structure of and relationships between the variables in your dataset.
-Here, you will select three plots from all of your previous exploration to
-present here as a summary of some of your most interesting findings. Make sure
-that you have refined your selected plots for good titling, axis labels (with
-units), and good aesthetic choices (e.g. color, transparency). After each plot,
-make sure you justify why you chose each plot by describing what it shows.
-
 ### Plot One
 
 ```{r}
 ggplot(dt, aes(x = CreditScoreRangeUpper)) + 
   geom_histogram(aes(y = ..count..), binwidth = 10, fill='#05DBF2',
         color='black', position="identity") + scale_y_sqrt() +
-        labs(x= 'Upper Range of Credit Score', y='Number of borrowers', title="Distribution of Credit Score Range (Upper)")
+        labs(x= 'Upper Range of Credit Score', y='Number of borrowers', 
+        title="Distribution of Credit Score Range (Upper)")
 summary(dt$CreditScoreRangeLower)
 summary(dt$CreditScoreRangeUpper)
 ```
@@ -573,7 +567,8 @@ ggplot(dt_pr, aes(y = LenderYield*100, x = BorrowerRate*100, color = ProsperRati
    geom_smooth(method = lm, se = FALSE) + 
   geom_point(shape = 1, 
              alpha = 1/10, position=position_jitter()) +
-  labs(x = 'Borrower Rate(%)', y = 'Lender Yield(%)', title = " Lender Yield vs. Borrower Rate") +
+  labs(x = 'Borrower Rate(%)', y = 'Lender Yield(%)', 
+  title = " Lender Yield vs. Borrower Rate") +
     annotate("rect", xmin = 0, xmax = 20, ymin = 30, 
                ymax = 35, fill="white", colour="red") +
     annotate("text", x = 10, y = 32.5, label = equation(fit), parse = TRUE)
@@ -592,14 +587,16 @@ p3 = ggplot(subset(dt, !(IncomeRange %in% c( "Not displayed"))),
   scale_y_log10 () + scale_color_brewer(palette="Dark2") +
   coord_cartesian(ylim = c(1, 1000000), xlim = c(1,1800)) + 
   geom_smooth(method = lm) +
-  labs(x= 'Monthly Loan Payment($USD)', y= 'Monthly Income($USD)', title = "Income vs. Loan Payment")
+  labs(x= 'Monthly Loan Payment($USD)', y= 'Monthly Income($USD)', 
+  title = "Income vs. Loan Payment")
 
 p4 = ggplot(subset(dt, !(IncomeRange %in% c( "Not displayed"))),
        aes(x = LoanOriginalAmount, y = MonthlyLoanPayment)) +
   geom_point(aes(color = IncomeRange)) + 
   scale_y_log10 () + scale_color_brewer(palette="Dark2") +
   geom_smooth(method = lm) +
-  labs(x= 'Original Loan Amount($USD)', y= 'Monthly Loan Payment($USD)', title = "Loan Payment vs. Borrowed Amount")
+  labs(x= 'Original Loan Amount($USD)', y= 'Monthly Loan Payment($USD)', 
+  title = "Loan Payment vs. Borrowed Amount")
 
 grid_arrange_shared_legend(p3, p4, ncol = 2)
 ```
