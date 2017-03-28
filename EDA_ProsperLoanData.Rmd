@@ -8,6 +8,7 @@ knitr::opts_chunk$set(echo = FALSE)
 knitr::opts_chunk$set(include = TRUE)
 knitr::opts_chunk$set(message =  FALSE)
 knitr::opts_chunk$set(warning =  FALSE)
+knitr::opts_chunk$set(fig.width=12, fig.height=6)
 ```
 
 ```{r echo=FALSE, message=FALSE, warning=FALSE, packages}
@@ -123,14 +124,14 @@ ggplot(subset(dt,!(LoanOriginationDate.year %in% c("2005", "2014"))),
   ylab('Number of Loans')
 ```
 
-```{r, fig.width=12, fig.height=8}
+```{r}
 ggplot(subset(dt,!(LoanOriginationDate.year %in% c("2005", "2014"))),
        aes(LoanOriginationDate.month)) +
   geom_bar(aes(fill= LoanOriginationDate.month)) +
   facet_wrap(~LoanOriginationDate.year, scales = "free", ncol = 4) +
   theme(axis.ticks.x = element_blank(), axis.text.x = element_blank()) +
   labs(title = 'Number of Loans by Months') +
-  ylab('Number of Loans')
+  ylab('Number of Loans') + scale_fill_brewer(palette = "Greens")
 ```
 
 > Years 2005 and 2014 might have incomplete data so we have exluded them. The number of loans had a uptrend from 2006-2008, it dipped in 2009 and then increased till 2013 year. The number of loans show a cyclical pattern.
@@ -160,8 +161,10 @@ summary(dt$CreditScoreRangeUpper)
 > Median Credit score range of a borrower is **680.0 to 699.0** and Mean ranges from 685.6 to 704.6. The **max score is 880 to 899** and there are a few borrowers (133 to be exact) with very low credit score (0-19). We will revisit this later and drop the borrowers with credit score less than 400
 
 ```{r, fig.width=6, fig.height=4}
+dt$ProsperRatings <- factor(dt$ProsperRating, 
+                               c("AA", "A", "B", "C", "D", "E", "HR"))
 ggplot(dt,
-       aes(x = ProsperRating)) +
+       aes(x = ProsperRatings)) +
   geom_bar(fill='#05DBF2',
         color='black') + coord_flip() +
   labs(title="Distribution of ProsperRatings")
@@ -169,15 +172,22 @@ ggplot(dt,
 
 > Prosper Ratings Range from AA to HR (best to worst) with most borrowers with prosper rating C, There are many borrowers(~30,000) which no prosper rating. We will revisit this later and drop the data with missing prosper ratings 
 
-```{r, fig.width=6, fig.height=4}
-ggplot(subset(dt, !(IncomeRange %in% c("Not displayed" , "Not available"))), 
-       aes(x = EmploymentStatus, fill = IncomeRange)) +
-  geom_bar() + coord_flip() +
-  labs(title="Distribution of Employment Status and Income Range")
+```{r}
+pl1 <- ggplot(subset(dt, !(EmploymentStatus %in% c("Not available" , ""))),
+              aes(x = EmploymentStatus)) +
+  geom_bar(fill='#05DBF2', color='black') + coord_flip() +
+  labs(title="Distribution of Employment Status")
+dt$IncomeRanges <- factor(dt$IncomeRange, 
+                         c("Not employed", "$0","$1-24,999","$25,000-49,999", 
+                           "$50,000-74,999", "$75,000-99,999", "$100,000+"))
+pl2 <- ggplot(dt, aes(x = IncomeRanges)) +
+  geom_bar(fill='#05DBF2', color='black') + coord_flip() +
+  labs(title="Distribution of Income Range")
+grid.arrange(pl1,pl2, nrow = 1)
 ```
 
 ```{r}
-summary(dt$IncomeRange)
+summary(dt$IncomeRanges)
 ```
 
 > Most Borrowers are **employed** (count = 67322), 26355 have full time jobs, and 6134 are self employed. Their income ranges mostly from **$25,000 to $49,999 per annum**, 17337 borrowers earning over $100,000 and over 1600 unemployed/retired/$0 income borrowers. However, there are 8669 borrowers with their **non verifiable income**. Ignoring these, the top 3 borrowers are still in income range: $25,000-$49,999 followed by $50,000-$74,999 and $100,000+.
@@ -195,27 +205,6 @@ ggplot(top_occupation,aes(x = reorder(Occupation, Count), y = Count)) +
 ```
 
 > The **top 7 Categories for Occupation** are 'Other', 'Professional', 'Computer Programmer', 'Executive', 'Teacher', 'Administrative Assistant' and 'Analyst'.
-
-**What Determines Borrower Rate?**
-
-```{r, fig.width=12, fig.height=8}
-library(gridExtra)
-g1 = ggplot(subset(dt, (!dt$ProsperRating== "")),
-            aes(x = BorrowerRate, fill = ProsperRating)) + geom_histogram()
-g2 = ggplot(subset(dt,!(IncomeRange %in% c("Not displayed","Not available"))),
-            aes(x = BorrowerRate, fill = IncomeRange)) + geom_histogram()
-g3 = ggplot(subset(dt,!(EmploymentStatus %in% c("" , "Not available"))),
-          aes(x = BorrowerRate, fill = EmploymentStatus)) + geom_histogram()
-g4 = ggplot(dt,aes(x = BorrowerRate, fill = IsBorrowerHomeowner)) +
-  geom_histogram() + scale_fill_discrete(name="Homeowner")
-grid.arrange(g1,g2,g3,g4)
-```
-
-> From the above plots,  
-+ Borrower Rate histogram shows very nice stirations when colored by Prosper Rating. The borrower rate increases with decreasing prosper rating, we see two peaks for counts- first one around 0.15 (A and B rating borrowers) and second one around 0.3 (E and HR rating borrowers).  
-+ When colored by Income range, the plot looks pretty uniform and doesn't show much correlation. However, the Unemployed borrowers mostly borrowed at rate = 0.3.  
-+ The third plot shows most of the borrowers were employed.  
-+ Also, owning a home did not increase or decrease the borrowing rate for the given dataset  
 
 **Where was the loan borrowed?**
 
@@ -276,38 +265,76 @@ ggplot(top_list,
 
 ## Bivariate Plots Section
 
+**Scatterplot matrix**
+> Before we start exploring bivariate variables in detail, we will create a scatterplot matrix for the numerical factors
+
+```{r}
+#Find numerical columns
+idx <- sapply(dt, is.numeric)
+subdt <- dt[,idx]
+#Remove NA's
+subdt <- subdt[,colSums(is.na(subdt)) == 0]
+subsdt <- subdt[c("BorrowerRate", "LenderYield","MonthlyLoanPayment",
+    "LoanOriginalAmount", "Investors", "StatedMonthlyIncome")]
+ggpairs(subsdt[sample(1:nrow(subsdt), "100",
+  	replace=FALSE),], upper = list(wrap = c(size = 10)),
+  lower = list(continuous = "smooth", wrap = c(method = "loess", fill = "blue"))) +
+   labs(title = "First 6 numerical Columns")
+```
+
+> Here, I showed ggpair plot for few of the numerical factors and some of the variables show strong correlations like Borrrower Rate, Lender Yield and Borrowed Amount.
+
 **Removing Outliers and Unusual Data**
 
-```{r, fig.width=6, fig.height=4}
+```{r}
 dt$age_with_months <- with(dt, 2015 - LoanOriginationDate.year +
                           (1 - as.numeric(LoanOriginationDate.month) / 12))
-ggplot(dt, aes(x = age_with_months, y = BorrowerRate, 
-               color = ProsperRating)) + 
-  geom_smooth() + labs(title = " Time trend of Borrower Rate")
+plt3 <- ggplot(dt, aes(x = age_with_months, 
+               fill = ProsperRatings)) + 
+  geom_histogram() + labs(title = " Time trend by Prosper Rating")
+
+plt4 <- ggplot(dt, aes(x = age_with_months, fill = CreditGrade)) + 
+  geom_histogram() + labs(title = " Time trend by CreditGrade")
+grid.arrange(plt3, plt4, nrow = 1)
 ```
 
-> age_with_months column is the age of the loan including months. Colored by ProsperRatings we see that the borrower rate increased with decreasing rating. All borrowers irrespective of the rating, show variation over the years in the borrower rate. Also note that the ratings did not exist before July 2009 as they appear as missing data(red line in the above plot). Before that, there was CreditGrade rating system shown in the plot below. 
-
-```{r, fig.width=6, fig.height=4}
-ggplot(dt, aes(x = age_with_months, y = BorrowerRate, 
-               color = CreditGrade)) + 
-  geom_smooth() + labs(title = " Time trend of Borrower Rate")
-```
-
-> Note that at the 10 year mark in the plot, or the beginning of time, Credit grade lines converge at borrower rate ~ 0.1. This could be due to fact that the rating system back then was not robust enough to assign interest rates based on ratings and hence this data will be excluded from our analysis next. We will also remove borrowers that had income range as not employed, not displayed or equal to 0 or have borrower rate >0.35 or have credit score lower than 400
+> age_with_months column is the age of the loan including months. Colored by ProsperRatings we see that the ratings did not exist before July 2009 as they appear as missing data. Before that, there was CreditGrade rating system. Since we have more data for ProsperRating vs CreditGrade, rows with CreditGrade rating system will be excluded from our analysis going further. We will also remove borrowers that had income range as not displayed or equal to 0, have borrower rate >0.35, Employment Status as not displayed or missing or have credit score lower than 400
 
 ```{r, echo = TRUE}
-dt <- subset(dt, !(ProsperRating == ""))
-dt <- subset(dt, !(IncomeRange %in% c("Not employed","$0","Not displayed")))
+dt <- subset(dt, !(ProsperRatings == ""))
+dt <- subset(dt, !(IncomeRange %in% c("Not displayed", "", "$0")))
 dt <- subset(dt, CreditScoreRangeUpper > 400)
 dt <- subset(dt, BorrowerRate < 0.35)
+dt <- subset(dt, !(EmploymentStatus %in% c("" , "Not available")))
 ```
+
+**What Determines Borrower Rate?**
+
+```{r}
+library(gridExtra)
+
+g1 = ggplot(dt, aes(x = BorrowerRate, fill = ProsperRatings)) + 
+  geom_histogram()
+g2 = ggplot(dt, aes(x = BorrowerRate, fill = IncomeRanges)) + 
+  geom_histogram()
+g3 = ggplot(dt, aes(x = BorrowerRate, fill = EmploymentStatus)) + 
+  geom_histogram()
+g4 = ggplot(dt,aes(x = BorrowerRate, fill = IsBorrowerHomeowner)) +
+  geom_histogram() + scale_fill_discrete(name="Homeowner")
+grid.arrange(g1,g2,g3,g4)
+```
+
+> From the above plots,  
++ Borrower Rate histogram shows very nice stirations when colored by Prosper Rating. The borrower rate increases with decreasing prosper rating, we see two peaks for counts- first one around 0.15 (A and B rating borrowers) and second one around 0.3 (E and HR rating borrowers).  
++ When colored by Income range, the plot looks pretty uniform and doesn't show much correlation. However, the Unemployed borrowers mostly borrowed at rate = 0.3.  
++ The third plot shows most of the borrowers were employed.  
++ Also, owning a home did not increase or decrease the borrowing rate for the given dataset
 
 **The 4K Mystery**
 
-```{r echo=FALSE, Bivariate_Plots, fig.width=6, fig.height=6}
-ggplot(dt, aes(ProsperRating, LoanOriginalAmount)) +
-  geom_boxplot(aes(fill = ProsperRating)) + 
+```{r echo=FALSE, Bivariate_Plots, fig.width=6, fig.height=4}
+ggplot(dt, aes(ProsperRatings, LoanOriginalAmount)) +
+  geom_boxplot(fill='#05DBF2', color='black') + 
   labs(title = "Borrowed Amount by Prosper Rating")
 ```
 
@@ -315,11 +342,9 @@ ggplot(dt, aes(ProsperRating, LoanOriginalAmount)) +
 
 ** More about Prosper Rating**
 
-```{r, fig.width=6, fig.height=6}
-dt$ProsperRatings <- factor(dt$ProsperRating, 
-                               c("AA", "A", "B", "C", "D", "E", "HR"))
+```{r, fig.width=6, fig.height=4}
 ggplot(dt, aes(y = CreditScoreRangeUpper ,x=ProsperRatings)) +
-  geom_boxplot(aes(fill = ProsperRatings)) + 
+  geom_boxplot(fill='#05DBF2', color='black') + 
   stat_summary(fun.y=median, geom="line", aes(group=1)) +
   scale_y_continuous() +
   labs(title = "Credit Score Range by Prosper Rating")
@@ -329,9 +354,9 @@ ggplot(dt, aes(y = CreditScoreRangeUpper ,x=ProsperRatings)) +
 
 **Debt To Income Ratio**
 
-```{r, fig.width=6, fig.height=6}
+```{r, fig.width=6, fig.height=4}
 ggplot(dt, aes(y = DebtToIncomeRatio, x = ProsperRatings)) +
-  geom_boxplot(aes(fill = ProsperRatings)) + 
+  geom_boxplot(fill='#05DBF2', color='black') + 
   stat_summary(fun.y=median, geom="line", aes(group=1)) +
   scale_y_continuous(limits =  quantile(dt$DebtToIncomeRatio, 
                                         probs = c(0.05, .95), 
@@ -341,9 +366,10 @@ ggplot(dt, aes(y = DebtToIncomeRatio, x = ProsperRatings)) +
 
 > Debt to Income shows some relationship to Prosper ratings, for the most part, the debt to income ratio increases with decreasing rating. We should also bring in income to understand the complete picture which we will do next
 
-```{r, fig.width=6, fig.height=6}
-ggplot(dt, aes(y = DebtToIncomeRatio, x= IncomeRange)) +
-  geom_boxplot(aes(fill = IncomeRange)) + theme(axis.text.x = element_text(angle = 90)) + 
+```{r, fig.width=6, fig.height=4}
+ggplot(dt, aes(y = DebtToIncomeRatio, x= IncomeRanges)) +
+  geom_boxplot(fill='#05DBF2', color='black') + 
+  theme(axis.text.x = element_text(angle = 90)) + 
   stat_summary(fun.y=median, geom="line", aes(group=1)) +
     scale_y_continuous(limits =  quantile(dt$DebtToIncomeRatio, 
                                         probs = c(0.05, .95), 
@@ -355,18 +381,18 @@ ggplot(dt, aes(y = DebtToIncomeRatio, x= IncomeRange)) +
 
 **Borrowing and Lending**
 
-```{r, fig.width=6, fig.height=6}
+```{r, fig.width=6, fig.height=4}
 ggplot(dt, aes(y = BorrowerRate,x=ProsperRatings)) +
-  geom_boxplot(aes(fill = ProsperRatings)) + 
+  geom_boxplot(fill='#05DBF2', color='black') + 
   stat_summary(fun.y=median, geom="line", aes(group=1)) +
   labs(title = "Borrower Rate by Prosper Rating")
 ```
 
 > The Borrower Rate shows linear relationship to Prosper Rating, Borrower Rate decreases with improving Rating. Let us explore another variable: Lender Yield and determine its relationship to Prosper Rating.
 
-```{r, fig.width=6, fig.height=6}
+```{r, fig.width=6, fig.height=4}
 ggplot(dt, aes(y = LenderYield,x=ProsperRatings)) +
-  geom_boxplot(aes(fill = ProsperRatings)) + 
+  geom_boxplot(fill='#05DBF2', color='black') + 
   stat_summary(fun.y=median, geom="line", aes(group=1)) +
   labs(title = "Lender Yield by Prosper Rating")
 ```
@@ -375,7 +401,7 @@ ggplot(dt, aes(y = LenderYield,x=ProsperRatings)) +
 
 **Talking about Linear Relationships!**
 
-```{r, fig.width=6, fig.height=6}
+```{r, fig.width=6, fig.height=4}
 fit <- lm(LenderYield ~ BorrowerRate, data = dt)
 equation = function(x) {
   lm_coef <- list(a = round(coef(x)[1], digits = 2),
@@ -391,7 +417,7 @@ ggplot(dt, aes(y = LenderYield, x = BorrowerRate)) +
              alpha = 0.01, position=position_jitter()) +
   labs(title = " Lender Yield vs. Borrower Rate") +
     annotate("rect", xmin = 0.00, xmax = 0.19, ymin = 0.3, 
-               ymax = 0.344, fill="white", colour="red") +
+               ymax = 0.34, fill="white", colour="red") +
     annotate("text", x = 0.095, y = 0.32, 
              label = equation(fit), parse = TRUE)
 
@@ -414,15 +440,15 @@ ggplot(dt, aes(y = LenderYield, x = BorrowerRate)) +
 ## Multivariate Plots Section
 > Continuing where we left off in the bivariate section, we will try to understand the risk in investing borrowers with high borrower rate.
 
-```{r, fig.width=6, fig.height=6}
+```{r, fig.width=6, fig.height=4}
 ggplot(dt, aes(y = EstimatedEffectiveYield, x = BorrowerRate, 
-               color = ProsperRatings)) +
+    color = ProsperRatings)) + scale_colour_brewer(palette = "Greens") +
   geom_point() + labs(title = " Estimated Effective Yield vs. Borrower Rate")
 ```
 
 > At the same borrower rate(for eg, at 0.2), estimated yield is in negative for HR and positive for B and A borrowers. It appears that the estimated yield is calculated purely based on rating and borrower rate
 
-```{r, fig.width=12, fig.height=6}
+```{r, fig.width=12, fig.height=4}
 g8 = ggplot(dt, aes(y = EstimatedLoss, x = LoanOriginalAmount, 
                color = ProsperRatings)) + geom_smooth() 
 g9 = ggplot(dt, aes(y = EstimatedLoss, x = BorrowerRate, 
@@ -432,39 +458,45 @@ g9 = ggplot(dt, aes(y = EstimatedLoss, x = BorrowerRate,
 
 > Estimated loss has a very weak relationship to Loan Amount for all except E and HR (notice flat lines). For E and HR, Loss decreases slighly over loan amount of $10,000, which makes sense as not may can't borrow that amount with those prosper ratings. With increasing Borrower Rate, Estimated loss also increased as high borrower rate means low prosper rating.
 
-```{r, fig.width=12, fig.height=6}
+```{r}
 # Referred link: https://chrisalbon.com/r-stats/scatterplot-with-ellipses-by-group.html
 dt_ell <- data.frame()
 # for each level in dt$ProsperRatings
 for(g in levels(dt$ProsperRatings)){
   # create 100 points per variable around the mean of each group
   dt_ell <- rbind(dt_ell, 
-                  cbind(as.data.frame(with(dt[dt$ProsperRatings==g,],
-                                    ellipse(cor(BorrowerRate, Investors),
-                                    scale=c(sd(BorrowerRate),sd(Investors)),
-                                    centre=c(mean(BorrowerRate),mean(Investors))
+            cbind(as.data.frame(with(dt[dt$ProsperRatings==g,],
+            ellipse(cor(BorrowerRate, Investors),
+            scale=c(sd(BorrowerRate),sd(Investors)),
+            centre=c(mean(BorrowerRate),mean(Investors))
                                     ))),
-                        as.data.frame(with(dt[dt$ProsperRatings==g,],
-                                    ellipse(cor(LoanOriginalAmount, Investors),
-                                    scale=c(sd(LoanOriginalAmount),sd(Investors)),
-                                    centre=c(mean(LoanOriginalAmount),mean(Investors))
+            as.data.frame(with(dt[dt$ProsperRatings==g,],
+            ellipse(cor(LoanOriginalAmount, Investors),
+            scale=c(sd(LoanOriginalAmount),sd(Investors)),
+            centre=c(mean(LoanOriginalAmount),mean(Investors))
                                     ))),
                                 group=g))
 }
 names(dt_ell) <- c("x1","y1","x2","y2","group")
 # create the ggplot with points colored by group
-p1 <- ggplot(data=dt, aes(x=BorrowerRate, y= Investors, colour=ProsperRatings)) +
+p1 <- ggplot(data=dt, aes(x=BorrowerRate,
+                          y= Investors, colour=ProsperRatings)) +
   # draw points
-  geom_point(size=1.5, alpha=.6) + labs(title = "Borrower Rate vs. Investors") +
+  geom_point(size=1.5, alpha=.6) + 
+  labs(title = "Borrower Rate vs. Investors") +
   # draw ellipse lines
-  geom_path(data=dt_ell, aes(x=x1, y=y1,colour=group), size=1, linetype=1)
+  geom_path(data=dt_ell, aes(x=x1, y=y1,colour=group), size=1, linetype=1) +
+  scale_colour_brewer(palette = "Greens")
 
 # create the ggplot with points colored by group
-p2 <- ggplot(data=dt, aes(x=LoanOriginalAmount, y= Investors, colour=ProsperRatings)) +
+p2 <- ggplot(data=dt, aes(x=LoanOriginalAmount, 
+                          y= Investors, colour=ProsperRatings)) +
   # draw points
-  geom_point(size=1.5, alpha=.6) + labs(title = "LoanOriginalAmount vs. Investors") +
+  geom_point(size=1.5, alpha=.6) + 
+  labs(title = "LoanOriginalAmount vs. Investors") +
   # draw ellipse lines
-  geom_path(data=dt_ell, aes(x=x2, y=y2,colour=group), size=1, linetype=1)
+  geom_path(data=dt_ell, aes(x=x2, y=y2,colour=group), size=1, linetype=1) +
+  scale_colour_brewer(palette = "Greens")
 
 
 grid_arrange_shared_legend <- function(..., ncol = length(list(...)), 
@@ -481,13 +513,13 @@ grid_arrange_shared_legend <- function(..., ncol = length(list(...)),
 
   combined <- switch(position,
                 "bottom" = arrangeGrob(do.call(arrangeGrob, gl),
-                          legend,
-                          ncol = 1,
-                          heights = unit.c(unit(1, "npc") - lheight, lheight)),
+                    legend,
+                    ncol = 1,
+                    heights = unit.c(unit(1, "npc") - lheight, lheight)),
                 "right" = arrangeGrob(do.call(arrangeGrob, gl),
-                          legend,
-                          ncol = 2,
-                          widths = unit.c(unit(1, "npc") - lwidth, lwidth)))
+                    legend,
+                    ncol = 2,
+                    widths = unit.c(unit(1, "npc") - lwidth, lwidth)))
 
   grid.newpage()
   grid.draw(combined)
@@ -503,9 +535,9 @@ grid_arrange_shared_legend(p1, p2, nrow = 1)
 
 **Burried in debt?**
 
-```{r, fig.width=6, fig.height=6}
-ggplot(dt, 
-       aes(y = DebtToIncomeRatio,x = IncomeRange)) +
+```{r, fig.width=6, fig.height=4}
+ggplot(subset(dt, !(IncomeRanges =="Not employed")), 
+       aes(y = DebtToIncomeRatio, x = IncomeRanges)) +
   geom_boxplot(aes(color = ProsperRatings)) + 
   theme(axis.text.x = element_text(angle = 90)) + 
   stat_summary(fun.y=mean, geom="line", aes(group=1)) +
@@ -516,21 +548,23 @@ ggplot(dt,
 
 > Connecting mean line shows a linear decreasing trend with increasing income range as expected. 95% of the borrowers had DebtToIncomeRatio less than 0.32, however, it ranges upto ~10 for the ones with income less than $25K. The plot also shows an interesting trend with ProsperRatings. Debt to Income Ratio increases for decreasing rating. The number of outliers also increase with decreasing ratings. It would be interesting to see the trend for the monthly payments for the borrowers, so we will do that next.
 
-```{r,  fig.width=12, fig.height=6}
+```{r}
 p3 = ggplot(dt,
        aes(x = MonthlyLoanPayment, y = StatedMonthlyIncome)) +
-  geom_point(aes(color = IncomeRange)) + 
+  geom_point(aes(color = IncomeRanges)) + 
   scale_y_log10 () + scale_color_brewer(palette="Dark2") +
   coord_cartesian(ylim = c(1, 1000000), xlim = c(1,1800)) + 
   geom_smooth(method = lm) +
-  labs(title = "Income vs. Loan Payment")
+  labs(title = "Income vs. Loan Payment") + 
+  scale_colour_brewer(palette = "Greens")
 
 p4 = ggplot(dt,
        aes(x = LoanOriginalAmount, y = MonthlyLoanPayment)) +
-  geom_point(aes(color = IncomeRange)) + 
+  geom_point(aes(color = IncomeRanges)) + 
   scale_y_log10 () + scale_color_brewer(palette="Dark2") +
   geom_smooth(method = lm) +
-  labs(title = "Loan vs. Borrowed Amount")
+  labs(title = "Loan vs. Borrowed Amount") + 
+  scale_colour_brewer(palette = "Greens")
 
 grid_arrange_shared_legend(p3, p4, ncol = 2)
 ```
@@ -546,25 +580,6 @@ ggplot(dt, aes(y = TakeHomeIncome, x = DebtToIncomeRatio)) +
 ```
 
 > We added a new column "TakeHomeIncome" which is the difference between monthly income and loan payment for a borrower and plotted it against DebtToIncomeRatio for all Prosper Ratings. Debt to Income Ratio increases with decreasing take home income. The borrowers with high Debt to Income Ratio and low take home income had low prosper ratings.
-
-**Scatterplot matrix**
-> Before we make a linear model for our dataset, we will create a scatterplot matrix for the factors that we are considering to include in our model
-
-```{r, fig.width=12, fig.height=12}
-#Find numerical columns
-idx <- sapply(dt, is.numeric)
-subdt <- dt[,idx]
-#Remove NA's
-subdt <- subdt[,colSums(is.na(subdt)) == 0]
-
-ggpairs(subdt[,4:13], 
- upper = list(continuous = wrap("cor")),
- lower = list(continuous = wrap("points", alpha = 0.3, size=0.1), 
-              combo = wrap("dot", alpha = 0.05, size=0.1) ),
- title = "First 10 numerical Columns")
-```
-
-> Here, I showed ggpair plot for columns 3 to 13 and some of the variables show strong correlations like BorrowerAPR to Borrrower Rate, Estimated Loss/Return/Yield to ratings and credit score.
 
 **Building a Model**
 > Now we will use the variables with strongest correlations to build our linear model for estimated effective yield. Some of the variables I can think of would be credit score range, delinquencies, inquiries and debt to income ratio.
@@ -588,7 +603,7 @@ summary(model)
 > Most Investors prefer to invest in low risk, low borrower rate loans despite the high lender yield for loans taken on higher borrower rate.
 
 #### OPTIONAL: Did you create any models with your dataset? Discuss the strengths and limitations of your model.
-> Yes, The model I created has Adjusted R2 of 0.9108. Strengths of the model is that it includes most of the contributing numerical factors affecting yield, the limitation is the assumption that all the factors are linear
+> Yes, The model I created has Adjusted R2 of 0.9109. Strengths of the model is that it includes most of the contributing numerical factors affecting yield, the limitation is the assumption that all the factors are linear
 
 ## Final Plots and Summary
 
@@ -596,7 +611,7 @@ summary(model)
 
 ```{r, fig.width=6, fig.height=4}
 ggplot(dt, aes(x = CreditScoreRangeUpper)) + 
-  geom_histogram(aes(y = ..count..), binwidth = 10, fill='#05DBF2',
+  geom_histogram(aes(y = ..count..), binwidth = 20, fill='#05DBF2',
         color='black', position="identity") + scale_y_sqrt() +
         labs(x= 'Upper Range of Credit Score', y='Number of borrowers', 
              title="Distribution of Credit Score Range (Upper)")
@@ -610,39 +625,47 @@ summary(dt$CreditScoreRangeUpper)
 
 ### Plot Two
 
-```{r, fig.width=12, fig.height=6}
+```{r}
 # Referred link: https://chrisalbon.com/r-stats/scatterplot-with-ellipses-by-group.html
 dt_ell <- data.frame()
 # for each level in dt$ProsperRatings
 for(g in levels(dt$ProsperRatings)){
   # create 100 points per variable around the mean of each group
   dt_ell <- rbind(dt_ell, 
-                  cbind(as.data.frame(with(dt[dt$ProsperRatings==g,],
-                                    ellipse(cor(BorrowerRate, Investors),
-                                    scale=c(sd(BorrowerRate),sd(Investors)),
-                                    centre=c(mean(BorrowerRate),mean(Investors))
+           cbind(as.data.frame(with(dt[dt$ProsperRatings==g,],
+           ellipse(cor(BorrowerRate, Investors),
+           scale=c(sd(BorrowerRate),sd(Investors)),
+           centre=c(mean(BorrowerRate),mean(Investors))
                                     ))),
-                        as.data.frame(with(dt[dt$ProsperRatings==g,],
-                                    ellipse(cor(LoanOriginalAmount, Investors),
-                                    scale=c(sd(LoanOriginalAmount),sd(Investors)),
-                                    centre=c(mean(LoanOriginalAmount),mean(Investors))
+           as.data.frame(with(dt[dt$ProsperRatings==g,],
+           ellipse(cor(LoanOriginalAmount, Investors),
+           scale=c(sd(LoanOriginalAmount),sd(Investors)),
+           centre=c(mean(LoanOriginalAmount),mean(Investors))
                                     ))),
                                 group=g))
 }
 names(dt_ell) <- c("x1","y1","x2","y2","group")
 # create the ggplot with points colored by group
-p1 <- ggplot(data=dt, aes(x=BorrowerRate, y= Investors, colour=ProsperRatings)) +
+p1 <- ggplot(data=dt, aes(x=BorrowerRate, y= Investors, 
+                          colour=ProsperRatings)) +
   # draw points
-  geom_point(size=1.5, alpha=.6) + labs(title = "Borrower Rate vs. Investors") +
+  geom_point(size=1.5, alpha=.6) + 
+  labs(title = "Borrower Rate vs. Investors") +
   # draw ellipse lines
-  geom_path(data=dt_ell, aes(x=x1, y=y1,colour=group), size=1, linetype=1)
+  geom_path(data=dt_ell, 
+            aes(x=x1, y=y1,colour=group), size=1, linetype=1) +
+  scale_colour_brewer(palette = "Greens")
 
 # create the ggplot with points colored by group
-p2 <- ggplot(data=dt, aes(x=LoanOriginalAmount, y= Investors, colour=ProsperRatings)) +
+p2 <- ggplot(data=dt, aes(x=LoanOriginalAmount, 
+                          y= Investors, colour=ProsperRatings)) +
   # draw points
-  geom_point(size=1.5, alpha=.6) + labs(title = "LoanOriginalAmount vs. Investors") +
+  geom_point(size=1.5, alpha=.6) + 
+  labs(title = "LoanOriginalAmount vs. Investors") +
   # draw ellipse lines
-  geom_path(data=dt_ell, aes(x=x2, y=y2,colour=group), size=1, linetype=1)
+  geom_path(data=dt_ell, 
+            aes(x=x2, y=y2,colour=group), size=1, linetype=1) +
+  scale_colour_brewer(palette = "Greens")
 
 grid_arrange_shared_legend(p1, p2, nrow = 1)
 ```
@@ -653,21 +676,21 @@ grid_arrange_shared_legend(p1, p2, nrow = 1)
 
 ### Plot Three
 
-```{r echo=FALSE, Plot_Three, fig.width=12, fig.height=6}
+```{r echo=FALSE, Plot_Three}
 dt_ell2 <- data.frame()
-# for each level in dt$IncomeRange
-for(g in levels(dt$IncomeRange)){
+# for each level in dt$IncomeRanges
+for(g in levels(dt$IncomeRanges)){
   # create 100 points per variable around the mean of each group
   dt_ell2 <- rbind(dt_ell2, 
-                  cbind(as.data.frame(with(dt[dt$IncomeRange==g,],
-                                    ellipse(cor(MonthlyLoanPayment , StatedMonthlyIncome),
-                                    scale=c(sd(MonthlyLoanPayment),sd(StatedMonthlyIncome)),
-                                    centre=c(mean(MonthlyLoanPayment),mean(StatedMonthlyIncome))
+     cbind(as.data.frame(with(dt[dt$IncomeRange==g,],
+     ellipse(cor(MonthlyLoanPayment , StatedMonthlyIncome),
+     scale=c(sd(MonthlyLoanPayment),sd(StatedMonthlyIncome)),
+     centre=c(mean(MonthlyLoanPayment),mean(StatedMonthlyIncome))
                                     ))),
-                        as.data.frame(with(dt[dt$IncomeRange==g,],
-                                    ellipse(cor(LoanOriginalAmount, MonthlyLoanPayment),
-                                    scale=c(sd(LoanOriginalAmount),sd(MonthlyLoanPayment)),
-                                    centre=c(mean(LoanOriginalAmount),mean(MonthlyLoanPayment))
+     as.data.frame(with(dt[dt$IncomeRange==g,],
+     ellipse(cor(LoanOriginalAmount, MonthlyLoanPayment),
+     scale=c(sd(LoanOriginalAmount),sd(MonthlyLoanPayment)),
+     centre=c(mean(LoanOriginalAmount),mean(MonthlyLoanPayment))
                                     ))),
                                 group=g))
 }
@@ -680,14 +703,19 @@ p3 = ggplot(dt, aes(x = MonthlyLoanPayment, y = StatedMonthlyIncome)) +
   coord_cartesian(ylim = c(1, 1000000), xlim = c(1,1800)) + 
   labs(x= 'Monthly Loan Payment($USD)', y= 'Monthly Income($USD)', 
        title = "Income vs. Loan Payment") +
-  geom_path(data=dt_ell2, aes(x=x1, y=y1,colour=group), size=1, linetype=1)
+  geom_path(data=dt_ell2, 
+            aes(x=x1, y=y1,colour=group), size=1, linetype=1) +
+  scale_colour_brewer(palette = "Greens")
 
 p4 = ggplot(dt, aes(x = LoanOriginalAmount, y = MonthlyLoanPayment)) +
   geom_point(aes(color = IncomeRange)) + 
   scale_y_log10 () + scale_color_brewer(palette="Dark2") +
-  labs(x= 'Original Loan Amount($USD)', y= 'Monthly Loan Payment($USD)', 
+  labs(x= 'Original Loan Amount($USD)',
+       y= 'Monthly Loan Payment($USD)', 
        title = "Loan Payment vs. Borrowed Amount") +
-  geom_path(data=dt_ell2, aes(x=x2, y=y2,colour=group), size=1, linetype=1)
+  geom_path(data=dt_ell2, 
+            aes(x=x2, y=y2,colour=group), size=1, linetype=1) +
+  scale_colour_brewer(palette = "Greens")
 
 grid_arrange_shared_legend(p3, p4, ncol = 2)
 ```
