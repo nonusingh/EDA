@@ -131,7 +131,7 @@ ggplot(subset(dt, !(LoanOriginationDate.year %in% c("2005", "2014"))),
   theme(axis.ticks.x = element_blank(), axis.text.x = element_blank()) +
   labs(title = 'Number of Loans by Months') +
   ylab('Number of Loans') + 
-  scale_fill_brewer(palette = "Greens")
+  scale_fill_brewer(type = "qual", palette = "Set3")
 ```
 
 > Years 2005 and 2014 might have incomplete data so we have exluded them. The number of loans had a uptrend from 2006-2008, it dipped in 2009 and then increased till 2013 year. The number of loans show a cyclical pattern.
